@@ -1123,14 +1123,14 @@
   <!-- Main -->
   <div class="main">
 
-    <!-- Update Notification -->
+    <!-- Update Notification 
     <div id="update-banner" style="display:none;background:var(--accent);color:#fff;padding:12px 20px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
       <span id="update-text">An update is available</span>
       <span style="display:flex;gap:8px;">
         <button onclick="installAppUpdate()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;">Update Now</button>
         <button onclick="dismissUpdateBanner()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;">✕</button>
       </span>
-    </div>
+     </div>-->
 
     <!-- Share panel -->
     <div class="share-panel">
@@ -1774,21 +1774,30 @@ async function init() {
   
   shareUrls = ipList.map(item => `http://${item.ip}:${port}`);
   
-  // Display all URLs with copy and open buttons
-  const urlsHtml = ipList.map((item, i) => {
-    const protocol = `http://${item.ip}:${port}`;
-    const label = item.name === 'Tailscale' || item.name.includes('Tailscale') ? 'Tailscale VPN' : 
-                  item.name.includes('Ethernet') || item.name.includes('Wi-Fi') ? 'Local Network' : 
-                  'Network';
-    return `<div class="url-row">
-      <span class="url-label">${label}</span>
-      <span class="url-address" title="${protocol}">${protocol}</span>
-      <div class="url-actions">
-        <button class="url-btn" onclick="copyUrlToClipboard('${protocol}', this)">📋 Copy</button>
-        <button class="url-btn" onclick="openUrlInBrowser('${protocol}')">🔗 Open</button>
-      </div>
-    </div>`;
-  }).join('');
+  // Display all URLs with copy and open buttons (only one per network type)
+  const urlsHtml = (() => {
+    const seenLabels = new Set();
+    return ipList.map((item, i) => {
+      const protocol = `http://${item.ip}:${port}`;
+      const label = item.name === 'Tailscale' || item.name.includes('Tailscale') ? 'Tailscale VPN' : 
+                    item.name.includes('Ethernet') || item.name.includes('Wi-Fi') ? 'Local Network' : 
+                    'Network';
+      
+      if (seenLabels.has(label)) {
+        return null;
+      }
+      seenLabels.add(label);
+      
+      return `<div class="url-row">
+        <span class="url-label">${label}</span>
+        <span class="url-address" title="${protocol}">${protocol}</span>
+        <div class="url-actions">
+          <button class="url-btn" onclick="copyUrlToClipboard('${protocol}', this)">📋 Copy</button>
+          <button class="url-btn" onclick="openUrlInBrowser('${protocol}')">🔗 Open</button>
+        </div>
+      </div>`;
+    }).filter(x => x !== null).join('');
+  })();
   
   document.getElementById('share-url').innerHTML = urlsHtml || `<div class="url-row"><span class="url-label">Local</span><span class="url-address">http://localhost:${port}</span></div>`;
   document.getElementById('dir-label').textContent = shareDir;
