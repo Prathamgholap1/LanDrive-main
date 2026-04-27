@@ -10,6 +10,7 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     :root {
+      /* Dark theme (default) */
       --bg: #0c0c10;
       --surface: #14141a;
       --surface2: #1c1c24;
@@ -25,6 +26,25 @@
       --green: #4ade80;
       --red: #f87171;
       --yellow: #facc15;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    .theme-light {
+      --bg: #f7f7fa;
+      --surface: #fff;
+      --surface2: #f2f2f7;
+      --surface3: #e9e9f2;
+      --border: #e0e0ea;
+      --border2: #d0d0e0;
+      --accent: #3b5cff;
+      --accent2: #6b8cff;
+      --accent-glow: rgba(59,92,255,0.08);
+      --text: #23233a;
+      --text2: #606080;
+      --text3: #a0a0b8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
       --radius: 10px;
       --radius-sm: 6px;
     }
@@ -1249,14 +1269,19 @@
 
 <!-- Settings Modal -->
 <div class="modal-overlay" id="settings-modal">
-  <div class="modal">
-    <h3>⚙️ Settings</h3>
+  <div class="modal" style="position:relative;">
+    <button onclick="closeSettings()" style="position:absolute;top:12px;right:12px;background:none;border:none;font-size:20px;color:var(--text2);cursor:pointer;line-height:1;">✕</button>
+    <h3 style="margin-right:32px;">⚙️ Settings</h3>
     <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Shared Folder</div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-family:'DM Mono',monospace;font-size:12px;color:var(--accent2);margin-bottom:12px;word-break:break-all" id="settings-dir">—</div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeSettings()">Close</button>
-      <button class="btn btn-accent" onclick="changeFolder()">Change Folder</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-family:'DM Mono',monospace;font-size:12px;color:var(--accent2);word-break:break-all;" id="settings-dir">—</div>
+      <button class="btn btn-accent" style="margin:0;" onclick="changeFolder()">Change Folder</button>
     </div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Theme</div>
+    <select id="theme-select" style="width:100%;margin-bottom:12px;padding:8px 10px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:13px;">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
   </div>
 </div>
 
@@ -1308,6 +1333,28 @@ let allFiles = [];
 let viewMode = 'grid';
 let ctxTarget = null;
 let shareUrls = [];
+
+// THEME HANDLING
+function applyTheme(theme) {
+  document.body.classList.toggle('theme-light', theme === 'light');
+}
+function setTheme(theme) {
+  localStorage.setItem('theme', theme);
+  applyTheme(theme);
+  const select = document.getElementById('theme-select');
+  if (select) select.value = theme;
+}
+function getTheme() {
+  return localStorage.getItem('theme') || 'dark';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  setTheme(getTheme());
+  const select = document.getElementById('theme-select');
+  if (select) {
+    select.value = getTheme();
+    select.addEventListener('change', e => setTheme(e.target.value));
+  }
+});
 
 const icons = {
   folder:'📁',pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️',svg:'🖼️',
@@ -1727,6 +1774,12 @@ async function doRename() {
 function openSettings() {
   document.getElementById('settings-modal').classList.add('open');
   window.electron.getShareDir().then(d => document.getElementById('settings-dir').textContent = d);
+  // Set theme select to current theme
+  const select = document.getElementById('theme-select');
+  if (select) {
+    select.value = getTheme();
+    select.onchange = e => setTheme(e.target.value);
+  }
 }
 function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
 async function changeFolder() {
