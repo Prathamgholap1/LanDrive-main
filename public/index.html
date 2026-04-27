@@ -336,6 +336,43 @@
       transition: opacity .1s;
     }
     .file-card:hover .file-card-menu { opacity: 1; }
+    .file-card-checkbox {
+      position: absolute; top: 6px; left: 6px;
+      width: 22px; height: 22px;
+      border-radius: 4px; border: 2px solid var(--border);
+      background: transparent; color: var(--text);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .1s;
+    }
+    .file-card-checkbox:hover { border-color: var(--accent); }
+    .file-card-checkbox.checked {
+      background: var(--accent); border-color: var(--accent);
+      color: white; font-weight: bold;
+    }
+    .file-card-download {
+      position: absolute; bottom: 6px; right: 6px;
+      opacity: 0; width: 28px; height: 28px;
+      border-radius: 4px; border: none;
+      background: var(--accent); color: white;
+      cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity .1s, background .1s;
+    }
+    .file-card:hover .file-card-download { opacity: 1; }
+    .file-card-download:hover { background: var(--accent2); }
+    .file-list-checkbox {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 3px; background: transparent; color: var(--text);
+      cursor: pointer; padding: 0; margin: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .1s;
+    }
+    .file-list-checkbox:hover { border-color: var(--accent); }
+    .file-list-checkbox.checked {
+      background: var(--accent); border-color: var(--accent);
+      color: white;
+    }
 
     /* LIST VIEW */
     .file-list { width: 100%; border-collapse: collapse; }
@@ -361,6 +398,7 @@
     .file-list .fl-name { display: flex; align-items: center; gap: 10px; }
     .fl-icon { font-size: 18px; }
     .fl-size { color: var(--text2); font-family: 'DM Mono', monospace; font-size: 12px; }
+    .fl-type { color: var(--text2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; min-width: 60px; }
     .fl-date { color: var(--text3); font-size: 12px; }
     .fl-actions { display: flex; gap: 4px; opacity: 0; }
     tr:hover .fl-actions { opacity: 1; }
@@ -1197,6 +1235,7 @@
         <button class="vt-btn active" id="vt-grid" onclick="setView('grid')" title="Grid view">⊞</button>
         <button class="vt-btn" id="vt-list" onclick="setView('list')" title="List view">☰</button>
       </div>
+      <button class="btn btn-ghost" id="select-all-btn" style="display:none;" title="Select all files">☐ Select All</button>
       <button class="btn btn-ghost" onclick="showDownloadHistory()" title="Download history">⬇ Downloads</button>
       <button class="btn btn-ghost" onclick="showNewFolderModal()">+ Folder</button>
       <button class="btn btn-accent" onclick="triggerUpload()">↑ Upload</button>
@@ -1206,10 +1245,22 @@
     <div class="toolbar">
       <div class="toolbar-info" id="toolbar-info">Loading…</div>
       <select class="sort-select" id="sort-select" onchange="renderFiles()">
-        <option value="name">Name</option>
-        <option value="date">Date</option>
-        <option value="size">Size</option>
-        <option value="type">Type</option>
+        <optgroup label="Name">
+          <option value="name-asc">Name (A-Z)</option>
+          <option value="name-desc">Name (Z-A)</option>
+        </optgroup>
+        <optgroup label="Size">
+          <option value="size-desc">Size (Large-Small)</option>
+          <option value="size-asc">Size (Small-Large)</option>
+        </optgroup>
+        <optgroup label="File Type">
+          <option value="type-asc">Type (A-Z)</option>
+          <option value="type-desc">Type (Z-A)</option>
+        </optgroup>
+        <optgroup label="Date">
+          <option value="date-desc">Date (Newest)</option>
+          <option value="date-asc">Date (Oldest)</option>
+        </optgroup>
       </select>
     </div>
 
@@ -1333,6 +1384,8 @@ let allFiles = [];
 let viewMode = 'grid';
 let ctxTarget = null;
 let shareUrls = [];
+let selectedFiles = new Set();
+let sortDirection = {}; // tracks direction for each sort type
 
 // THEME HANDLING
 function applyTheme(theme) {
@@ -1373,6 +1426,10 @@ function getIcon(item) {
   const ext = item.ext?.replace('.','').toLowerCase();
   return icons[ext] || '📄';
 }
+function getFileType(item) {
+  if (item.type === 'folder') return 'Folder';
+  return item.ext ? item.ext.replace('.','').toUpperCase() : 'File';
+}
 function fmtSize(b) {
   if (!b) return '';
   if (b < 1024) return b + ' B';
@@ -1386,6 +1443,7 @@ function fmtDate(d) {
 }
 
 async function loadFiles(p) {
+  selectedFiles.clear();
   currentPath = p ?? currentPath;
   try {
     const res = await fetch(`${BASE}/api/files?path=${encodeURIComponent(currentPath)}`);
@@ -1402,16 +1460,25 @@ async function loadFiles(p) {
 }
 
 function getSortedFiles() {
-  const sort = document.getElementById('sort-select').value;
+  const sortVal = document.getElementById('sort-select').value;
+  const [sortType, sortDir] = sortVal.split('-');
   const q = document.getElementById('search-input').value.toLowerCase();
   let files = allFiles.filter(f => !q || f.name.toLowerCase().includes(q));
   files.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-    if (sort === 'name') return a.name.localeCompare(b.name);
-    if (sort === 'size') return b.size - a.size;
-    if (sort === 'date') return new Date(b.modified) - new Date(a.modified);
-    if (sort === 'type') return a.ext?.localeCompare(b.ext||'') || a.name.localeCompare(b.name);
-    return 0;
+    
+    let comparison = 0;
+    if (sortType === 'name') {
+      comparison = a.name.localeCompare(b.name);
+    } else if (sortType === 'size') {
+      comparison = a.size - b.size;
+    } else if (sortType === 'date') {
+      comparison = new Date(a.modified) - new Date(b.modified);
+    } else if (sortType === 'type') {
+      comparison = (a.ext?.localeCompare(b.ext||'')) || a.name.localeCompare(b.name);
+    }
+    
+    return sortDir === 'desc' ? -comparison : comparison;
   });
   return files;
 }
@@ -1425,15 +1492,19 @@ function renderFiles() {
   }
   if (viewMode === 'grid') renderGrid(files, container);
   else renderList(files, container);
+  updateSelectAllButton();
 }
 
 function renderGrid(files, container) {
   container.innerHTML = `<div class="file-grid">${files.map((f,i) => `
-    <div class="file-card" style="animation-delay:${i*0.02}s"
-      onclick="handleFileClick(event, ${JSON.stringify(f).replace(/"/g,'&quot;')})"
+    <div class="file-card ${selectedFiles.has(f.path) ? 'selected' : ''}" style="animation-delay:${i*0.02}s"
       ondblclick="handleFileDblClick(${JSON.stringify(f).replace(/"/g,'&quot;')})"
       oncontextmenu="showCtxMenu(event, ${JSON.stringify(f).replace(/"/g,'&quot;')})">
+      <button class="file-card-checkbox ${selectedFiles.has(f.path) ? 'checked' : ''}" onclick="event.stopPropagation();toggleFileSelection('${f.path}')">
+        ${selectedFiles.has(f.path) ? '✓' : ''}
+      </button>
       <button class="file-card-menu" onclick="event.stopPropagation();showCtxMenu(event, ${JSON.stringify(f).replace(/"/g,'&quot;')})">⋯</button>
+      ${f.type === 'file' ? `<button class="file-card-download" onclick="event.stopPropagation();downloadFile('${f.path}','${esc(f.name)}')">⬇</button>` : ''}
       <div class="file-card-icon">${getIcon(f)}</div>
       <div class="file-card-name">${esc(f.name)}</div>
       <div class="file-card-meta">${f.type === 'folder' ? 'Folder' : fmtSize(f.size)}</div>
@@ -1442,13 +1513,16 @@ function renderGrid(files, container) {
 
 function renderList(files, container) {
   container.innerHTML = `<table class="file-list">
-    <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead>
+    <thead><tr><th style="width:30px"></th><th>Name</th><th>Type</th><th>Size</th><th>Modified</th><th></th></tr></thead>
     <tbody>${files.map((f,i) => `
-      <tr style="animation-delay:${i*0.015}s"
-        onclick="handleFileClick(event, ${JSON.stringify(f).replace(/"/g,'&quot;')})"
+      <tr style="animation-delay:${i*0.015}s" class="${selectedFiles.has(f.path) ? 'selected' : ''}"
         ondblclick="handleFileDblClick(${JSON.stringify(f).replace(/"/g,'&quot;')})"
         oncontextmenu="showCtxMenu(event, ${JSON.stringify(f).replace(/"/g,'&quot;')})">
+        <td style="padding:10px 8px;"><button class="file-list-checkbox ${selectedFiles.has(f.path) ? 'checked' : ''}" onclick="event.stopPropagation();toggleFileSelection('${f.path}')">
+          ${selectedFiles.has(f.path) ? '✓' : ''}
+        </button></td>
         <td><div class="fl-name"><span class="fl-icon">${getIcon(f)}</span>${esc(f.name)}</div></td>
+        <td class="fl-type">${getFileType(f)}</td>
         <td class="fl-size">${f.type==='folder'?'—':fmtSize(f.size)}</td>
         <td class="fl-date">${fmtDate(f.modified)}</td>
         <td><div class="fl-actions">
@@ -1463,12 +1537,58 @@ function renderList(files, container) {
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function handleFileClick(e, f) { /* single click: select */ }
+
+function toggleFileSelection(path) {
+  if (selectedFiles.has(path)) {
+    selectedFiles.delete(path);
+  } else {
+    selectedFiles.add(path);
+  }
+  renderFiles();
+  updateSelectAllButton();
+}
+
+function selectAll() {
+  const files = getSortedFiles();
+  files.forEach(f => selectedFiles.add(f.path));
+  renderFiles();
+  updateSelectAllButton();
+}
+
+function clearSelection() {
+  selectedFiles.clear();
+  renderFiles();
+  updateSelectAllButton();
+}
+
+function updateSelectAllButton() {
+  const files = getSortedFiles();
+  const selectAllBtn = document.getElementById('select-all-btn');
+  if (!selectAllBtn) return;
+  
+  if (files.length === 0) {
+    selectAllBtn.style.display = 'none';
+  } else if (selectedFiles.size === 0) {
+    selectAllBtn.style.display = 'inline-block';
+    selectAllBtn.textContent = '☐ Select All';
+    selectAllBtn.onclick = selectAll;
+  } else if (selectedFiles.size === files.length) {
+    selectAllBtn.style.display = 'inline-block';
+    selectAllBtn.textContent = '☑ Clear Selection';
+    selectAllBtn.onclick = clearSelection;
+  } else {
+    selectAllBtn.style.display = 'inline-block';
+    selectAllBtn.textContent = `${selectedFiles.size}/${files.length} selected`;
+    selectAllBtn.onclick = clearSelection;
+  }
+}
 function handleFileDblClick(f) {
   if (f.type === 'folder') navigateTo(f.path);
   else downloadFile(f.path, f.name);
 }
 
 function navigateTo(p) {
+  selectedFiles.clear();
   loadFiles(p);
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   document.getElementById('nav-home').classList.add('active');
